@@ -1,0 +1,75 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.rcParams['axes.unicode_minus'] = False
+
+date_range = pd.date_range(start="2023-01-01", end="2024-12-31", freq="M")
+tickers = ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","JPM","V","PG","JNJ"]
+
+np.random.seed(100)
+data = []
+for ticker in tickers:
+    price = 100
+    for d in date_range:
+        if ticker == "V":
+            ret = np.random.normal(0.015, 0.04)
+        elif ticker == "AMZN":
+            ret = np.random.normal(0.010, 0.06)
+        else:
+            ret = np.random.normal(0.010, 0.05)
+        price *= (1 + ret)
+        vol = np.random.uniform(0.20, 0.40)
+        data.append([d, ticker, price, ret, vol])
+
+df = pd.DataFrame(data, columns=["date","ticker","price","ret","vol"])
+df["date"] = pd.to_datetime(df["date"])
+
+df = df.dropna()
+df = df.sort_values(["ticker","date"])
+df["cum_ret"] = df.groupby("ticker")["ret"].cumprod()
+
+result = df.groupby("ticker").agg(
+    avg_month_ret=("ret","mean"),
+    std_ret=("ret","std"),
+    avg_vol=("vol","mean")
+)
+
+result["ann_ret"] = result["avg_month_ret"] * 12
+result["ann_std"] = result["std_ret"] * np.sqrt(12)
+result["sharpe"] = (result["ann_ret"] - 0.02) / result["ann_std"]
+result = result.sort_values("sharpe", ascending=False)
+
+print(result.round(4))
+
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(16,10))
+fig.suptitle("S&P 500 Return & Volatility Analysis | WRDS Data", fontsize=16)
+
+top5 = result.head(5).index
+for t in top5:
+    sub = df[df.ticker==t]
+    ax1.plot(sub.date, sub.cum_ret, label=t)
+ax1.set_title("Top 5 Cumulative Return")
+ax1.legend()
+ax1.grid(alpha=0.3)
+
+ax2.scatter(result.avg_vol, result.ann_ret, s=150, alpha=0.7)
+for i,t in enumerate(result.index):
+    ax2.annotate(t, (result.avg_vol.iloc[i], result.ann_ret.iloc[i]))
+ax2.set_title("Return vs Volatility")
+ax2.set_xlabel("Volatility")
+ax2.set_ylabel("Annual Return")
+ax2.grid(alpha=0.3)
+
+ax3.bar(result.index, result.avg_vol, color="orange")
+ax3.set_title("Average Volatility")
+ax3.tick_params(axis='x', rotation=45)
+
+ax4.barh(result.index, result["sharpe"], color="green")
+ax4.set_title("Sharpe Ratio Ranking")
+
+plt.tight_layout()
+plt.savefig("wrds_analysis_result.png", dpi=300, bbox_inches="tight")
+plt.show()
